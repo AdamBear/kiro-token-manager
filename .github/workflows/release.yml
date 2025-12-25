@@ -155,22 +155,28 @@ jobs:
         if: matrix.platform == 'macos-latest'
         env:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles dmg
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles dmg,updater
 
       - name: Bundle Tauri app (Linux)
         if: matrix.platform == 'ubuntu-22.04'
         env:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles deb,rpm
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles deb,rpm,updater
 
       - name: Bundle Tauri app (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         env:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           # 使用 tauri build 生成包含嵌入前端资源的可执行文件
-          npm run tauri build -- --target ${{ matrix.target }} --bundles nsis
+          npm run tauri build -- --target ${{ matrix.target }} --bundles nsis,updater
 
       - name: Install UPX (Windows)
         if: matrix.platform == 'windows-latest'
@@ -244,11 +250,29 @@ jobs:
             for f in portable/*.zip; do
               [ -f "$f" ] && cp "$f" "release/"
             done
+            # 复制 NSIS 安装包
+            for f in src-tauri/target/${TARGET}/release/bundle/nsis/*.exe; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}_setup.exe"
+            done
+            # 复制 updater 签名文件
+            for f in src-tauri/target/${TARGET}/release/bundle/nsis/*.nsis.zip; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}_nsis.zip"
+            done
+            for f in src-tauri/target/${TARGET}/release/bundle/nsis/*.nsis.zip.sig; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}_nsis.zip.sig"
+            done
           fi
           
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             for f in src-tauri/target/${TARGET}/release/bundle/dmg/*.dmg; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.dmg"
+            done
+            # 复制 updater 签名文件
+            for f in src-tauri/target/${TARGET}/release/bundle/macos/*.app.tar.gz; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.app.tar.gz"
+            done
+            for f in src-tauri/target/${TARGET}/release/bundle/macos/*.app.tar.gz.sig; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.app.tar.gz.sig"
             done
           fi
           
@@ -258,6 +282,13 @@ jobs:
             done
             for f in src-tauri/target/${TARGET}/release/bundle/rpm/*.rpm; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_x86_64.rpm"
+            done
+            # 复制 updater 签名文件
+            for f in src-tauri/target/${TARGET}/release/bundle/appimage/*.AppImage.tar.gz; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.AppImage.tar.gz"
+            done
+            for f in src-tauri/target/${TARGET}/release/bundle/appimage/*.AppImage.tar.gz.sig; do
+              [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.AppImage.tar.gz.sig"
             done
           fi
           
@@ -285,5 +316,77 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 生成 latest.json 用于自动更新
+  generate-latest-json:
+    needs: release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-default-*
+
+      - name: Generate latest.json
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          REPO="usaalas/kiro-token-manager"
+          BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
+          
+          # 读取签名文件
+          read_sig() {
+            local file="$1"
+            if [ -f "$file" ]; then
+              cat "$file"
+            else
+              echo ""
+            fi
+          }
+          
+          # 查找文件
+          MACOS_AARCH64_SIG=$(find artifacts -name "*aarch64.app.tar.gz.sig" -type f | head -1)
+          MACOS_X64_SIG=$(find artifacts -name "*x64.app.tar.gz.sig" -type f | head -1)
+          WINDOWS_SIG=$(find artifacts -name "*nsis.zip.sig" -type f | head -1)
+          LINUX_SIG=$(find artifacts -name "*AppImage.tar.gz.sig" -type f | head -1)
+          
+          # 生成 latest.json
+          cat > latest.json << EOF
+          {
+            "version": "v${VERSION}",
+            "notes": "Kiro Token Manager v${VERSION}",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$(read_sig "$MACOS_AARCH64_SIG")",
+                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$(read_sig "$MACOS_X64_SIG")",
+                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_x64.app.tar.gz"
+              },
+              "windows-x86_64": {
+                "signature": "$(read_sig "$WINDOWS_SIG")",
+                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_x64_nsis.zip"
+              },
+              "linux-x86_64": {
+                "signature": "$(read_sig "$LINUX_SIG")",
+                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_amd64.AppImage.tar.gz"
+              }
+            }
+          }
+          EOF
+          
+          cat latest.json
+
+      - name: Upload latest.json to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
