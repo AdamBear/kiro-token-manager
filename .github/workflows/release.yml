@@ -126,7 +126,7 @@ jobs:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles dmg,updater
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles dmg,app
 
       - name: Bundle Tauri app (Linux)
         if: matrix.platform == 'ubuntu-22.04'
@@ -134,7 +134,7 @@ jobs:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target ${{ matrix.target }} --bundles deb,rpm,updater
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles deb,rpm,appimage
 
       - name: Bundle Tauri app (Windows)
         if: matrix.platform == 'windows-latest'
@@ -145,7 +145,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           # 使用 tauri build 生成包含嵌入前端资源的可执行文件
-          npm run tauri build -- --target ${{ matrix.target }} --bundles nsis,updater
+          npm run tauri build -- --target ${{ matrix.target }} --bundles nsis
 
       - name: Install UPX (Windows)
         if: matrix.platform == 'windows-latest'
