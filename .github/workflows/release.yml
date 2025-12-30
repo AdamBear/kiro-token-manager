@@ -227,7 +227,7 @@ jobs:
             for f in src-tauri/target/${TARGET}/release/bundle/nsis/*.exe; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}_setup.exe"
             done
-            # 复制 updater 签名文件
+            # 复制 updater 更新包和签名文件
             for f in src-tauri/target/${TARGET}/release/bundle/nsis/*.nsis.zip; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}_nsis.zip"
             done
@@ -240,7 +240,7 @@ jobs:
             for f in src-tauri/target/${TARGET}/release/bundle/dmg/*.dmg; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.dmg"
             done
-            # 复制 updater 签名文件
+            # 复制 updater 更新包和签名文件（自动更新必需）
             for f in src-tauri/target/${TARGET}/release/bundle/macos/*.app.tar.gz; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.app.tar.gz"
             done
@@ -256,7 +256,7 @@ jobs:
             for f in src-tauri/target/${TARGET}/release/bundle/rpm/*.rpm; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_x86_64.rpm"
             done
-            # 复制 updater 签名文件
+            # 复制 updater 更新包和签名文件（自动更新必需）
             for f in src-tauri/target/${TARGET}/release/bundle/appimage/*.AppImage.tar.gz; do
               [ -f "$f" ] && cp "$f" "release/${PREFIX}KiroTokenManager_${VERSION}_${ARCH}.AppImage.tar.gz"
             done
@@ -265,13 +265,7 @@ jobs:
             done
           fi
           
-          cd release
-          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            shasum -a 256 * > SHA256SUMS.txt 2>/dev/null || true
-          else
-            sha256sum * > SHA256SUMS.txt 2>/dev/null || true
-          fi
-          cd ..
+          # 不在这里生成 SHA256SUMS.txt，由汇总 job 统一生成
           ls -lh release/
 
       - name: Upload artifacts
@@ -292,7 +286,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # 生成 latest.json 用于自动更新
+  # 生成 latest.json 和汇总 SHA256SUMS.txt
   generate-latest-json:
     needs: release
     runs-on: ubuntu-latest
@@ -304,7 +298,7 @@ jobs:
           path: artifacts
           pattern: release-default-*
 
-      - name: Generate latest.json
+      - name: Generate latest.json and SHA256SUMS.txt
         shell: bash
         run: |
           VERSION="${{ github.ref_name }}"
@@ -355,11 +349,26 @@ jobs:
           }
           EOF
           
+          echo "📄 latest.json:"
           cat latest.json
+          
+          # 汇总生成 SHA256SUMS.txt（排除签名文件和已有的 SHA256SUMS.txt）
+          echo "📝 生成汇总 SHA256SUMS.txt..."
+          find artifacts -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.zip" -o -name "*.app.tar.gz" -o -name "*.AppImage.tar.gz" -o -name "*.nsis.zip" \) ! -name "*.sig" | while read file; do
+            # 只取文件名，不要路径
+            filename=$(basename "$file")
+            hash=$(sha256sum "$file" | cut -d' ' -f1)
+            echo "$hash  $filename"
+          done | sort -k2 > SHA256SUMS.txt
+          
+          echo "📄 SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
 
-      - name: Upload latest.json to release
+      - name: Upload latest.json and SHA256SUMS.txt to release
         uses: softprops/action-gh-release@v1
         with:
-          files: latest.json
+          files: |
+            latest.json
+            SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
