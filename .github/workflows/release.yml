@@ -107,49 +107,18 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Channel: $CHANNEL"
           echo "📌 Version: $VERSION"
+          
+          # 同步更新所有版本文件，确保关于页版本与 tag 一致
           npm pkg set version="$VERSION"
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
+          
+          echo "✅ 版本已同步到所有配置文件"
 
       - name: Build frontend
         env:
           CHANNEL: ${{ steps.version.outputs.CHANNEL }}
         run: npm run build
-
-      - name: Build Rust backend (non-Windows)
-        if: matrix.platform != 'windows-latest'
-        shell: bash
-        env:
-          CHANNEL: ${{ steps.version.outputs.CHANNEL }}
-        run: |
-          cd src-tauri
-          cargo build --release --target ${{ matrix.target }}
-          cd ..
-
-      - name: Binary packing (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/kiro-token-manager"
-          if [ -f "$BINARY_PATH" ]; then
-            strip -x "$BINARY_PATH" 2>/dev/null || true
-            strip -S "$BINARY_PATH" 2>/dev/null || true
-            JUNK_FILE=$(mktemp)
-            dd if=/dev/urandom of="$JUNK_FILE" bs=1024 count=256 2>/dev/null
-            cat "$JUNK_FILE" >> "$BINARY_PATH"
-            rm -f "$JUNK_FILE"
-            touch -t 200001010000 "$BINARY_PATH" 2>/dev/null || true
-          fi
-
-      - name: Binary packing (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          BINARY_PATH="src-tauri/target/${{ matrix.target }}/release/kiro-token-manager"
-          if [ -f "$BINARY_PATH" ]; then
-            strip --strip-all "$BINARY_PATH" 2>/dev/null || true
-            JUNK_FILE=$(mktemp)
-            dd if=/dev/urandom of="$JUNK_FILE" bs=1024 count=256 2>/dev/null
-            cat "$JUNK_FILE" >> "$BINARY_PATH"
-            rm -f "$JUNK_FILE"
-            touch -t 200001010000 "$BINARY_PATH" 2>/dev/null || true
-          fi
 
       - name: Bundle Tauri app (macOS)
         if: matrix.platform == 'macos-latest'
@@ -245,6 +214,10 @@ jobs:
           fi
           
           echo "📦 Channel: $CHANNEL, Version: $VERSION, Prefix: $PREFIX"
+          
+          # 调试：列出 bundle 目录结构
+          echo "📂 Bundle 目录结构:"
+          find src-tauri/target/${TARGET}/release/bundle -type f 2>/dev/null || echo "Bundle 目录不存在"
           
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             for f in portable/*.zip; do
