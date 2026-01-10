@@ -1,6 +1,6 @@
 # Kiro Token Manager
 
-一款 Kiro Token 管理工具，支持一键切号、动态无感修改设备 ID、批量刷新 Token、用量查询等功能。
+一款 Kiro Token 管理工具，支持ToAPI给claude code 使用，支持一键切号、动态无感修改设备ID等功能。
 
 欢迎加QQ 群交流(287135760)
 
