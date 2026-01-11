@@ -324,7 +324,7 @@ jobs:
           VERSION="${VERSION#v}"
           REPO="usaalas/kiro-token-manager"
           BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
-          
+
           # 读取签名文件
           read_sig() {
             local file="$1"
@@ -334,45 +334,87 @@ jobs:
               echo ""
             fi
           }
-          
-          # 查找文件
+
+          # 查找更新包文件（不是签名文件）
+          MACOS_AARCH64_FILE=$(find artifacts -name "*aarch64.app.tar.gz" ! -name "*.sig" -type f | head -1)
+          MACOS_X64_FILE=$(find artifacts -name "*x64.app.tar.gz" ! -name "*.sig" -type f | head -1)
+          WINDOWS_FILE=$(find artifacts -name "*nsis.zip" ! -name "*.sig" -type f | head -1)
+          LINUX_FILE=$(find artifacts -name "*amd64.AppImage.tar.gz" ! -name "*.sig" -type f | head -1)
+          LINUX_ARM64_FILE=$(find artifacts -name "*arm64.AppImage.tar.gz" ! -name "*.sig" -type f | head -1)
+
+          # 查找签名文件
           MACOS_AARCH64_SIG=$(find artifacts -name "*aarch64.app.tar.gz.sig" -type f | head -1)
           MACOS_X64_SIG=$(find artifacts -name "*x64.app.tar.gz.sig" -type f | head -1)
           WINDOWS_SIG=$(find artifacts -name "*nsis.zip.sig" -type f | head -1)
           LINUX_SIG=$(find artifacts -name "*amd64.AppImage.tar.gz.sig" -type f | head -1)
           LINUX_ARM64_SIG=$(find artifacts -name "*arm64.AppImage.tar.gz.sig" -type f | head -1)
-          
+
+          echo "📦 找到的更新包文件:"
+          echo "  macOS aarch64: $MACOS_AARCH64_FILE"
+          echo "  macOS x64: $MACOS_X64_FILE"
+          echo "  Windows: $WINDOWS_FILE"
+          echo "  Linux amd64: $LINUX_FILE"
+          echo "  Linux arm64: $LINUX_ARM64_FILE"
+
+          # 动态生成 platforms JSON（只包含存在的平台）
+          PLATFORMS=""
+
+          if [ -n "$MACOS_AARCH64_FILE" ] && [ -f "$MACOS_AARCH64_FILE" ]; then
+            [ -n "$PLATFORMS" ] && PLATFORMS="$PLATFORMS,"
+            PLATFORMS="$PLATFORMS
+              \"darwin-aarch64\": {
+                \"signature\": \"$(read_sig "$MACOS_AARCH64_SIG")\",
+                \"url\": \"${BASE_URL}/KiroTokenManager_${VERSION}_aarch64.app.tar.gz\"
+              }"
+          fi
+
+          if [ -n "$MACOS_X64_FILE" ] && [ -f "$MACOS_X64_FILE" ]; then
+            [ -n "$PLATFORMS" ] && PLATFORMS="$PLATFORMS,"
+            PLATFORMS="$PLATFORMS
+              \"darwin-x86_64\": {
+                \"signature\": \"$(read_sig "$MACOS_X64_SIG")\",
+                \"url\": \"${BASE_URL}/KiroTokenManager_${VERSION}_x64.app.tar.gz\"
+              }"
+          fi
+
+          if [ -n "$WINDOWS_FILE" ] && [ -f "$WINDOWS_FILE" ]; then
+            [ -n "$PLATFORMS" ] && PLATFORMS="$PLATFORMS,"
+            PLATFORMS="$PLATFORMS
+              \"windows-x86_64\": {
+                \"signature\": \"$(read_sig "$WINDOWS_SIG")\",
+                \"url\": \"${BASE_URL}/KiroTokenManager_${VERSION}_x64_nsis.zip\"
+              }"
+          fi
+
+          if [ -n "$LINUX_FILE" ] && [ -f "$LINUX_FILE" ]; then
+            [ -n "$PLATFORMS" ] && PLATFORMS="$PLATFORMS,"
+            PLATFORMS="$PLATFORMS
+              \"linux-x86_64\": {
+                \"signature\": \"$(read_sig "$LINUX_SIG")\",
+                \"url\": \"${BASE_URL}/KiroTokenManager_${VERSION}_amd64.AppImage.tar.gz\"
+              }"
+          fi
+
+          if [ -n "$LINUX_ARM64_FILE" ] && [ -f "$LINUX_ARM64_FILE" ]; then
+            [ -n "$PLATFORMS" ] && PLATFORMS="$PLATFORMS,"
+            PLATFORMS="$PLATFORMS
+              \"linux-aarch64\": {
+                \"signature\": \"$(read_sig "$LINUX_ARM64_SIG")\",
+                \"url\": \"${BASE_URL}/KiroTokenManager_${VERSION}_arm64.AppImage.tar.gz\"
+              }"
+          fi
+
           # 生成 latest.json
           cat > latest.json << EOF
           {
             "version": "v${VERSION}",
             "notes": "Kiro Token Manager v${VERSION}",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "$(read_sig "$MACOS_AARCH64_SIG")",
-                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "$(read_sig "$MACOS_X64_SIG")",
-                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_x64.app.tar.gz"
-              },
-              "windows-x86_64": {
-                "signature": "$(read_sig "$WINDOWS_SIG")",
-                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_x64_nsis.zip"
-              },
-              "linux-x86_64": {
-                "signature": "$(read_sig "$LINUX_SIG")",
-                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_amd64.AppImage.tar.gz"
-              },
-              "linux-aarch64": {
-                "signature": "$(read_sig "$LINUX_ARM64_SIG")",
-                "url": "${BASE_URL}/KiroTokenManager_${VERSION}_arm64.AppImage.tar.gz"
-              }
+            "platforms": {$PLATFORMS
             }
           }
           EOF
-          
+
           echo "📄 latest.json:"
           cat latest.json
           
